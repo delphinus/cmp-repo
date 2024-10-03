@@ -1,4 +1,5 @@
 local config = require "cmp_repo.config"
+local repo = require "cmp_repo.repo"
 
 ---@class CmpRepo
 local source = {}
@@ -32,7 +33,7 @@ end
 ---@param callback fun(items?: vim.CompletedItem[]): nil
 ---@return nil
 function source:complete(_, callback)
-  callback()
+  repo.start(callback)
 end
 
 return source
