@@ -61,25 +61,17 @@ function Repo:start()
       root:find_repo(tx)
     end
   end))
-  ---@type lsp.CompletionItem[]
-  local items = {}
-  ---@type table<string, boolean>
-  local seen = {}
-  while true do
-    local repo = rx.recv()
-    log.debug("received: %s", repo)
-    if not repo then
-      break
-    end
-    vim.iter(self:make_candidate(repo)):each(function(candidate)
-      if not seen[candidate.label] then
-        table.insert(items, candidate)
-        seen[candidate.label] = true
+  local result = vim.iter(rx.recv):fold({ seen = {}, items = {} }, function(a, b)
+    vim.iter(self:make_candidate(b)):each(function(candidate)
+      if not a.seen[candidate.label] then
+        table.insert(a.items, candidate)
+        a.seen[candidate.label] = true
       end
     end)
-  end
+    return a
+  end)
   return {
-    items = items,
+    items = result.items,
     isIncomplete = not not vim.iter(pairs(self.jobs)):find(function(_, v)
       return v ~= STATUS.FINISHED
     end),
