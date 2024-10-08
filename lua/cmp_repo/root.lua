@@ -22,56 +22,60 @@ end
 
 ---@async
 ---@param tx { send: fun(dir?: string): nil }
-function Root:find_repo(tx)
-  ---@async
-  ---@param tx { send: fun(dir?: string): nil }
-  ---@param dir string
-  ---@param depth? integer
-  local function search_repo(tx, dir, depth)
-    if not depth then
-      depth = 5
-    end
-    local err, fd = async_fs_opendir(dir, 1000)
-    if err then
-      log.debug("search_dir() fs_opendir failed. dir: %s, err: %s", dir, err)
-      return
-    end
-    local entries
-    err, entries = async.uv.fs_readdir(fd)
-    if err then
-      log.debug("search_dir() fs_readdir failed. dir: %s, err: %s", dir, err)
-      return
-    elseif not entries then
-      log.debug("search_dir() fs_readdir failed. dir: %s has no entries", dir)
-      return
-    end
-    err = async.uv.fs_closedir(fd)
-    if err then
-      log.debug("search_dir() fs_closedir failed. dir: %s, err: %s", dir, err)
-      return
-    end
-    log.debug("dir: %s, entries: %d", dir, #entries)
-    local threads = vim
-      .iter(entries)
-      :filter(function(entry)
-        return entry.type == "directory"
-      end)
-      :map(function(entry)
-        return function()
-          local repo = Path:new(dir, entry.name)
-          local is_repo = not (async.uv.fs_stat((repo / ".git").filename))
-          log.debug("dir: %s, is_repo: %s", repo.filename, is_repo)
-          if is_repo then
-            tx.send(repo:make_relative(self.dir))
-          elseif depth > 0 then
-            search_repo(tx, repo.filename, depth - 1)
-          end
-        end
-      end)
-      :totable()
-    async.util.join(threads)
+---@param base string
+---@param dir? string
+---@param depth? integer
+local function search_repo(tx, base, dir, depth)
+  if not dir then
+    dir = base
   end
+  if not depth then
+    depth = 5
+  end
+  local err, fd = async_fs_opendir(dir, 1000)
+  if err then
+    log.debug("search_dir() fs_opendir failed. dir: %s, err: %s", dir, err)
+    return
+  end
+  local entries
+  err, entries = async.uv.fs_readdir(fd)
+  if err then
+    log.debug("search_dir() fs_readdir failed. dir: %s, err: %s", dir, err)
+    return
+  elseif not entries then
+    log.debug("search_dir() fs_readdir failed. dir: %s has no entries", dir)
+    return
+  end
+  err = async.uv.fs_closedir(fd)
+  if err then
+    log.debug("search_dir() fs_closedir failed. dir: %s, err: %s", dir, err)
+    return
+  end
+  log.debug("dir: %s, entries: %d", dir, #entries)
+  local threads = vim
+    .iter(entries)
+    :filter(function(entry)
+      return entry.type == "directory"
+    end)
+    :map(function(entry)
+      return function()
+        local repo = Path:new(dir, entry.name)
+        local is_repo = not (async.uv.fs_stat((repo / ".git").filename))
+        log.debug("dir: %s, is_repo: %s", repo.filename, is_repo)
+        if is_repo then
+          tx.send(repo:make_relative(base))
+        elseif depth > 0 then
+          search_repo(tx, base, repo.filename, depth - 1)
+        end
+      end
+    end)
+    :totable()
+  async.util.join(threads)
+end
 
+---@async
+---@param tx { send: fun(dir?: string): nil }
+function Root:find_repo(tx)
   search_repo(tx, self.dir)
   tx.send()
 end
